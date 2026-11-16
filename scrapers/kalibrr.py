@@ -2,12 +2,11 @@ import logging
 import re
 
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, quote_plus
+from urllib.parse import quote_plus
 
-from base import goto_with_retry, human_delay, jitter_scroll, short_delay
-from browser import get_browser
-from extract import extract_contact, extract_job_type, extract_salary
-from skills_keyword import extract_skills
+from core.base import fetch_detail_soup, human_delay, listing_page, resolve_url
+from core.extract import extract_contact, extract_job_type, extract_salary
+from core.skills_keyword import extract_skills
 
 log = logging.getLogger(__name__)
 
@@ -64,28 +63,15 @@ def _extract_description(detail_soup):
 
 
 def scrape_kalibrr(keyword="software engineer", max_jobs=25):
-    p, browser, context = get_browser()
-    jobs = []
+    base_url = "https://www.kalibrr.com"
+    url = f"{base_url}/home/jobs?keywords={quote_plus(keyword)}"
 
-    try:
-        page = context.new_page()
+    wait_selector = "a[href*='/c/'][href*='/jobs/']"
+    with listing_page(url, wait_selector, "Kalibrr") as loaded:
+        if loaded is None:
+            return []
 
-        base_url = "https://www.kalibrr.com"
-        url = f"{base_url}/home/jobs?keywords={quote_plus(keyword)}"
-
-        if not goto_with_retry(page, url):
-            log.warning("[Kalibrr] Gagal memuat halaman pencarian: %s", url)
-            return jobs
-
-        human_delay()
-        jitter_scroll(page)
-        human_delay()
-
-        try:
-            page.wait_for_selector("a[href*='/c/'][href*='/jobs/']", timeout=30000)
-        except Exception:
-            log.warning("[Kalibrr] Kartu lowongan tidak muncul untuk keyword: %s", keyword)
-
+        page, context = loaded
         soup = BeautifulSoup(page.content(), "html.parser")
 
         anchors = []
@@ -99,7 +85,9 @@ def scrape_kalibrr(keyword="software engineer", max_jobs=25):
             if not title or len(title) < 5:
                 continue
             seen_href.add(href)
-            anchors.append((a, urljoin(base_url, href)))
+            anchors.append((a, resolve_url(href, base_url)))
+
+        jobs = []
 
         for anchor, job_url in anchors:
             if len(jobs) >= max_jobs:
@@ -127,24 +115,22 @@ def scrape_kalibrr(keyword="software engineer", max_jobs=25):
                 contact_info = None
 
                 try:
-                    detail_page = context.new_page()
-                    detail_page.goto(job_url, wait_until="domcontentloaded", timeout=15000)
-                    human_delay(2, 4)
-                    detail_soup = BeautifulSoup(detail_page.content(), "html.parser")
+                    detail_soup = fetch_detail_soup(
+                        context, job_url,
+                        delay=lambda: human_delay(2, 4),
+                    )
+                    if detail_soup:
+                        description = _extract_description(detail_soup)
+                        page_text = detail_soup.get_text(" ", strip=True)
 
-                    description = _extract_description(detail_soup)
-                    page_text = detail_soup.get_text(" ", strip=True)
+                        salary = salary or extract_salary(description or page_text)
+                        job_type = job_type or extract_job_type(description or page_text)
+                        contact_info = extract_contact(description or page_text)
 
-                    salary = salary or extract_salary(description or page_text)
-                    job_type = job_type or extract_job_type(description or page_text)
-                    contact_info = extract_contact(description or page_text)
-
-                    if not location_text:
-                        loc_el = detail_soup.select_one("[class*='location']")
-                        if loc_el:
-                            location_text = loc_el.text.strip()
-
-                    detail_page.close()
+                        if not location_text:
+                            loc_el = detail_soup.select_one("[class*='location']")
+                            if loc_el:
+                                location_text = loc_el.text.strip()
                 except Exception as e:
                     log.debug("[Kalibrr] Gagal ambil detail %s: %s", job_url, e)
 
@@ -165,12 +151,6 @@ def scrape_kalibrr(keyword="software engineer", max_jobs=25):
             except Exception as e:
                 log.debug("[Kalibrr] Gagal proses kartu: %s", e)
                 continue
-    finally:
-        try:
-            browser.close()
-        except Exception:
-            pass
-        p.stop()
 
     log.info("[Kalibrr] Keyword '%s' menghasilkan %d lowongan", keyword, len(jobs))
     return jobs

@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Lowongan - Job Scraper{% endblock %}
+
+{% macro meta_item(icon, label, value, cls='') %}
+  <span title="{{ label }}">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon|safe }}</svg>
+    <span class="job-val {{ cls }}">{{ value }}</span>
+  </span>
+{% endmacro %}
+
+{% block content %}
+{% set ICON_BUILDING = '<path d="M4 21V6a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M13 10h5a1 1 0 0 1 1 1v10M3 21h18M7 8h3M7 12h3M7 16h3M16 14h1"/>' %}
+{% set ICON_PIN = '<path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/>' %}
+{% set ICON_CASH = '<path d="M12 3v18M16.5 7.5c0-1.7-2-3-4.5-3S7.5 5.8 7.5 7.5 9.5 10 12 10s4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3"/>' %}
+{% set ICON_CLOCK = '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>' %}
+{% set ICON_GLOBE = '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.2 2.4 3.3 5.4 3.3 8.5S14.2 18.1 12 20.5c-2.2-2.4-3.3-5.4-3.3-8.5S9.8 5.9 12 3.5Z"/>' %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Lowongan Kerja</h1>
+    <p class="page-sub">
+      Semua lowongan yang berhasil dikumpulkan. Saring, lalu buka lowongan aslinya di situs sumbernya.
+    </p>
+  </div>
+
+</div>
+
+{# ── Ringkasan ─────────────────────────────────────────────────────────── #}
+<div class="grid grid-4 grid-keep-2">
+  <div class="stat stat--brand">
+    <div class="stat-label">Total Lowongan</div>
+    <div class="stat-value tabular">{{ total_all }}</div>
+    <div class="stat-note">semua sumber</div>
+  </div>
+
+  <div class="stat">
+    <div class="stat-label">Sumber Aktif</div>
+    <div class="stat-value tabular">{{ per_source_sorted|length }}</div>
+    <div class="stat-note">situs pernah mengirim data</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Sedang Ditampilkan</div>
+    <div class="stat-value tabular">{{ total_filtered }}</div>
+    <div class="stat-note">
+      {% if total_filtered != total_all %}dari {{ total_all }} total{% else %}tanpa saringan{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if per_source_sorted %}
+<details class="disclose">
+  <summary>
+    Sebaran lowongan per situs
+    <span class="badge badge-mute">{{ per_source_sorted|length }} sumber</span>
+  </summary>
+  <div class="disclose-body">
+    <div class="bars">
+      {% set top = per_source_sorted[0][1] or 1 %}
+      {% for src, cnt in per_source_sorted %}
+      <div class="bar-row">
+        <span class="bar-name" title="{{ src }}">{{ src }}</span>
+        <span class="bar-track">
+          <span class="bar-fill" style="width: {{ (cnt / top * 100)|round(1) }}%"></span>
+        </span>
+        <span>
+          <span class="bar-count tabular">{{ cnt }}</span>
+          <span class="bar-pct">&nbsp;{{ (cnt / total_all * 100)|round(0)|int }}%</span>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</details>
+{% endif %}
+
+{# ── Saringan ──────────────────────────────────────────────────────────── #}
+<form class="card" method="get" action="{{ url_for('dashboard') }}">
+  <div class="card-head">
+    <div>
+      <h2>Saring Lowongan</h2>
+      <p>Kombinasi beberapa saringan bisa dipakai sekaligus.</p>
+    </div>
+    {% if q or source or jtype or priority %}
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('dashboard') }}">Reset semua</a>
+    {% endif %}
+  </div>
+
+  <div class="card-body">
+    <div class="filter-grid">
+      <label class="field span-all">
+        <span class="field-label">Cari di judul</span>
+        <span class="search">
+          <span class="search-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+          </span>
+          <input class="input" type="search" name="q" value="{{ q }}" placeholder="Admin, kasir, developer…">
+        </span>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Situs asal</span>
+        <select class="select" name="source">
+          <option value="">Semua situs</option>
+          {% for src in sources %}
+          <option value="{{ src }}" {% if source == src %}selected{% endif %}>{{ src }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Jenis pekerjaan</span>
+        <select class="select" name="type">
+          <option value="">Semua jenis</option>
+          {% for t in types %}
+          <option value="{{ t }}" {% if jtype == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+
+    </div>
+  </div>
+
+  <div class="card-foot">
+    <div class="row">
+      <button type="submit" class="btn btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        Tampilkan
+      </button>
+      <span class="spacer"></span>
+      <span>
+        Menampilkan <strong class="tabular">{{ total_filtered }}</strong> lowongan
+        {%- if total_filtered != total_all %} dari {{ total_all }}{% endif %}.
+      </span>
+    </div>
+  </div>
+</form>
+
+{# ── Chip saringan aktif ───────────────────────────────────────────────── #}
+{% set chips = [] %}
+{% if q %}{% set _ = chips.append(('q', 'Judul: “' ~ q ~ '”')) %}{% endif %}
+{% if source %}{% set _ = chips.append(('source', 'Situs: ' ~ source)) %}{% endif %}
+{% if jtype %}{% set _ = chips.append(('type', 'Jenis: ' ~ jtype)) %}{% endif %}
+
+{% if chips %}
+<div class="row" style="gap: 0.5rem">
+  <span class="mute-sm">Saringan aktif:</span>
+  <div class="chip-row">
+    {% for key, label in chips %}
+    {% set keep = {'q': q, 'source': source, 'type': jtype, 'priority': priority} %}
+    {% set _ = keep.pop(key) %}
+    <span class="chip-filter">
+      {{ label }}
+      <a href="{{ url_for('dashboard', **keep) }}" title="Hapus saringan ini" aria-label="Hapus saringan {{ label }}">&times;</a>
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Daftar lowongan ───────────────────────────────────────────────────── #}
+{% if rows %}
+<div class="job-list">
+  {% for row in rows %}
+  {% set skills = row['skills'] or [] %}
+  <article class="job">
+    <div class="job-top">
+      <a class="job-title" href="{{ row['url'] }}" target="_blank" rel="noopener">{{ row['title'] }}</a>
+    </div>
+
+    <div class="job-meta">
+      {% if row['company'] %}{{ meta_item(ICON_BUILDING, 'Perusahaan', row['company'], 'job-company') }}{% endif %}
+      {% if row['location'] %}{{ meta_item(ICON_PIN, 'Lokasi', row['location']) }}{% endif %}
+      {% if row['salary'] %}{{ meta_item(ICON_CASH, 'Gaji', row['salary']) }}{% endif %}
+      {{ meta_item(ICON_GLOBE, 'Situs asal', row['source']) }}
+      {% if row['created_at'] %}{{ meta_item(ICON_CLOCK, 'Tanggal masuk', row['created_at'][:10]) }}{% endif %}
+    </div>
+
+    <div class="job-foot">
+      <div class="job-skills">
+        {% if row['type'] %}<span class="badge badge-brand">{{ row['type'] }}</span>{% endif %}
+        {% for skill in skills[:4] %}<span class="skill">{{ skill }}</span>{% endfor %}
+        {% if skills|length > 4 %}<span class="skill-more">+{{ skills|length - 4 }} keahlian lain</span>{% endif %}
+      </div>
+      <a class="btn btn-primary btn-sm" href="{{ row['url'] }}" target="_blank" rel="noopener">
+        Buka
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 5h5v5M19 5l-7 7M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>
+        </svg>
+      </a>
+    </div>
+
+    {% if row['description'] %}
+    <details class="sub-disclose">
+      <summary>Lihat deskripsi</summary>
+      <div class="sub-disclose-body">{{ row['description'] }}</div>
+    </details>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+
+{# ── Paginasi ──────────────────────────────────────────────────────────── #}
+{% if total_pages > 1 %}
+{% set span = 2 %}
+{% set first = [1, page - span]|max %}
+{% set last = [total_pages, page + span]|min %}
+<nav class="pagination" aria-label="Paginasi">
+  {% if page > 1 %}
+  <a class="btn btn-sm" href="{{ url_for('dashboard', q=q, source=source, type=jtype, priority=priority, page=page-1) }}" rel="prev">&larr; Sebelumnya</a>
+  {% else %}
+  <span class="btn btn-sm" aria-disabled="true">&larr; Sebelumnya</span>
+  {% endif %}
+
+  {% if first > 1 %}
+  <a class="page-num" href="{{ url_for('dashboard', q=q, source=source, type=jtype, priority=priority, page=1) }}">1</a>
+  {% if first > 2 %}<span class="page-num is-gap">…</span>{% endif %}
+  {% endif %}
+
+  {% for p in range(first, last + 1) %}
+  <a class="page-num {% if p == page %}is-active{% endif %}"
+     href="{{ url_for('dashboard', q=q, source=source, type=jtype, priority=priority, page=p) }}"
+     {% if p == page %}aria-current="page"{% endif %}>{{ p }}</a>
+  {% endfor %}
+
+  {% if last < total_pages %}
+  {% if last < total_pages - 1 %}<span class="page-num is-gap">…</span>{% endif %}
+  <a class="page-num" href="{{ url_for('dashboard', q=q, source=source, type=jtype, priority=priority, page=total_pages) }}">{{ total_pages }}</a>
+  {% endif %}
+
+  {% if page < total_pages %}
+  <a class="btn btn-sm" href="{{ url_for('dashboard', q=q, source=source, type=jtype, priority=priority, page=page+1) }}" rel="next">Berikutnya &rarr;</a>
+  {% else %}
+  <span class="btn btn-sm" aria-disabled="true">Berikutnya &rarr;</span>
+  {% endif %}
+
+  <span class="pagination-meta">Halaman {{ page }} dari {{ total_pages }}</span>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="empty">
+  <span class="empty-icon">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+  </span>
+  <h3>Tidak ada lowongan yang cocok</h3>
+  {% if total_all == 0 %}
+  <p>
+    Belum ada data sama sekali. Buka halaman <a href="{{ url_for('pipeline') }}">Jalankan</a>,
+    tekan <strong>Mulai</strong>, lalu tunggu sampai lowongan terkumpul.
+  </p>
+  {% else %}
+  <p>Ubah kata kunci, atau <a href="{{ url_for('dashboard') }}">hapus semua saringan</a> untuk melihat {{ total_all }} lowongan.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

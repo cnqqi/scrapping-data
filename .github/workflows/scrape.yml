@@ -22,7 +22,7 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Run scraper
-        run: python run.py --once
+        run: xvfb-run --auto-servernum python run.py --once
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}

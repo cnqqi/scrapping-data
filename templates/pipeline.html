@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Jalankan - Job Scraper{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Jalankan Pencarian</h1>
+    <p class="page-sub">
+      Sistem membuka tiap situs yang aktif, mencari lowongan untuk tiap kata kunci,
+      lalu menyimpan hasilnya ke database Supabase.
+    </p>
+  </div>
+
+</div>
+
+{# ── Kontrol ───────────────────────────────────────────────────────────── #}
+<section class="card" aria-labelledby="ctrlTitle">
+  <div class="card-head">
+    <div>
+      <h2 id="ctrlTitle">Kontrol Pelaksanaan</h2>
+      <p>Tombol Jeda dan Hentikan aktif setelah <strong>Mulai</strong> ditekan.</p>
+    </div>
+    <span class="status-pill" id="stStatus">Belum mulai</span>
+  </div>
+
+  <div class="card-body stack" style="--stack: 1rem">
+    <div class="btn-group">
+      <button type="button" id="startBtn" class="btn btn-primary btn-lg">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M8 5.5v13a1 1 0 0 0 1.5.87l11-6.5a1 1 0 0 0 0-1.74l-11-6.5A1 1 0 0 0 8 5.5z"/>
+        </svg>
+        Mulai
+      </button>
+
+      <button type="button" id="pauseBtn" class="btn btn-lg btn-warn" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M8 5.5h2.6v13H8zM13.4 5.5H16v13h-2.6z"/>
+        </svg>
+        <span id="pauseLabel">Jeda</span>
+      </button>
+
+      <button type="button" id="stopBtn" class="btn btn-lg btn-danger" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </svg>
+        Hentikan
+      </button>
+    </div>
+
+    <div class="grid grid-3 grid-keep-2" style="gap: 0.6rem">
+      <div class="row-tight mute-sm"><span class="badge badge-brand">Mulai</span> mulai mencari lowongan.</div>
+      <div class="row-tight mute-sm"><span class="badge badge-warn">Jeda</span> berhenti sejenak, tombol jadi <strong>Lanjut</strong>.</div>
+      <div class="row-tight mute-sm"><span class="badge badge-danger">Hentikan</span> berhenti permanen, lowongan terbaca tetap tersimpan.</div>
+    </div>
+  </div>
+</section>
+
+{# ── Angka-Enam Statistik ──────────────────────────────────────────────── #}
+<div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))">
+  <div class="stat stat--sm">
+    <div class="stat-label">Progres</div>
+    <div class="stat-value tabular" id="stProgress">-</div>
+  </div>
+  <div class="stat stat--sm">
+    <div class="stat-label">Mulai Pukul</div>
+    <div class="stat-value" id="stStart">-</div>
+  </div>
+  <div class="stat stat--sm">
+    <div class="stat-label">Selesai Pukul</div>
+    <div class="stat-value" id="stEnd">-</div>
+  </div>
+  <div class="stat stat--sm stat--ok">
+    <div class="stat-label">Lowongan Ditemukan</div>
+    <div class="stat-value tabular" id="stFound">-</div>
+  </div>
+  <div class="stat stat--sm stat--brand">
+    <div class="stat-label">Tersimpan</div>
+    <div class="stat-value tabular" id="stInserted">-</div>
+  </div>
+</div>
+
+
+
+{# ── Catatan perjalanan ────────────────────────────────────────────────── #}
+<section class="console" aria-label="Catatan perjalanan">
+  <div class="console-bar">
+    <span class="console-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="console-title">Catatan Perjalanan</span>
+    <span class="console-legend" aria-hidden="true">
+      <span class="lg-stage"><i></i>Tahap</span>
+      <span class="lg-ok"><i></i>Berhasil</span>
+      <span class="lg-warn"><i></i>Perhatian</span>
+      <span class="lg-fail"><i></i>Gagal</span>
+      <span class="lg-step"><i></i>Detail</span>
+    </span>
+    <button type="button" class="console-btn" id="copyLog" title="Salin seluruh catatan ke papan klip">Salin</button>
+    <button type="button" class="console-btn" id="clearLog" title="Kosongkan tampilan catatan">Bersihkan</button>
+  </div>
+  <div class="log-box" id="logBox" role="log" aria-live="polite" aria-label="Catatan scraping">
+    <div class="log-placeholder" id="logPlaceholder">Belum ada aktivitas. Tekan tombol “Mulai” untuk menjalankan.</div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='pipeline.js') }}"></script>
+{% endblock %}

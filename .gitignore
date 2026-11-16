@@ -4,6 +4,7 @@ __pycache__/
 
 # Local configuration and secrets
 .env
+secrets/
 
 # VS Code settings
 .vscode/

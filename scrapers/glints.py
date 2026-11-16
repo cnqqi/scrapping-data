@@ -1,12 +1,12 @@
 import logging
+import re
 
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, quote_plus
+from urllib.parse import quote_plus
 
-from base import goto_with_retry, human_delay, jitter_scroll, short_delay
-from browser import get_browser
-from extract import extract_contact, extract_job_type, extract_salary
-from skills_keyword import extract_skills
+from core.base import fetch_detail_soup, listing_page, resolve_url, short_delay
+from core.extract import extract_contact, extract_job_type, extract_salary
+from core.skills_keyword import extract_skills
 
 log = logging.getLogger(__name__)
 
@@ -56,32 +56,20 @@ def _extract_description(detail_soup):
 
 
 def scrape_glints(keyword="software engineer", max_jobs=25):
-    p, browser, context = get_browser()
-    jobs = []
+    base_url = "https://glints.com"
+    url = (f"{base_url}/id/opportunities/jobs/explore"
+           f"?keyword={quote_plus(keyword)}&country=ID&locationName=All+Cities%2FProvinces&lowestLocationLevel=1")
 
-    try:
-        page = context.new_page()
+    wait_selector = "a[href*='/opportunities/jobs/']"
+    with listing_page(url, wait_selector, "Glints") as loaded:
+        if loaded is None:
+            return []
 
-        base_url = "https://glints.com"
-        url = (f"{base_url}/id/opportunities/jobs/explore"
-               f"?keyword={quote_plus(keyword)}&country=ID&locationName=All+Cities%2FProvinces&lowestLocationLevel=1")
-
-        if not goto_with_retry(page, url):
-            log.warning("[Glints] Gagal memuat halaman pencarian: %s", url)
-            return jobs
-
-        human_delay()
-        jitter_scroll(page)
-        human_delay()
-
-        try:
-            page.wait_for_selector("a[href*='/opportunities/jobs/']", timeout=30000)
-        except Exception:
-            log.warning("[Glints] Kartu lowongan tidak muncul untuk keyword: %s", keyword)
-
+        page, context = loaded
         soup = BeautifulSoup(page.content(), "html.parser")
-
+        jobs = []
         seen_url = set()
+
         for card in soup.select("div[class*='CompactJobCard']"):
             if len(jobs) >= max_jobs:
                 break
@@ -91,8 +79,7 @@ def scrape_glints(keyword="software engineer", max_jobs=25):
                 if not title_el:
                     continue
 
-                href = title_el.get("href", "")
-                job_url = urljoin(base_url, href.split("?")[0])
+                job_url = resolve_url(title_el.get("href", ""), base_url)
                 if job_url in seen_url:
                     continue
                 seen_url.add(job_url)
@@ -108,7 +95,6 @@ def scrape_glints(keyword="software engineer", max_jobs=25):
                     if company_span:
                         company_text = company_span.get_text(strip=True).split(",")[0].strip()
 
-                location_text = ""
                 loc_spans = [s.get_text(" ", strip=True) for s in card.select("[class*='LocationSpan']")]
                 location_text = " ".join(t for t in loc_spans if t and t != ",").replace(" , ", ", ").strip(", ")
 
@@ -123,24 +109,19 @@ def scrape_glints(keyword="software engineer", max_jobs=25):
                 contact_info = None
 
                 try:
-                    detail_page = context.new_page()
-                    detail_page.goto(job_url, wait_until="domcontentloaded", timeout=20000)
-                    short_delay()
-                    detail_soup = BeautifulSoup(detail_page.content(), "html.parser")
+                    detail_soup = fetch_detail_soup(context, job_url, timeout=20000, delay=short_delay)
+                    if detail_soup:
+                        description = _extract_description(detail_soup)
+                        page_text = detail_soup.get_text(" ", strip=True)
 
-                    description = _extract_description(detail_soup)
-                    page_text = detail_soup.get_text(" ", strip=True)
+                        salary = salary or extract_salary(description or page_text)
+                        job_type = job_type or extract_job_type(description or page_text)
+                        contact_info = extract_contact(description or page_text)
 
-                    salary = salary or extract_salary(description or page_text)
-                    job_type = job_type or extract_job_type(description or page_text)
-                    contact_info = extract_contact(description or page_text)
-
-                    if not location_text:
-                        loc_el = detail_soup.select_one("[class*='ocation']")
-                        if loc_el:
-                            location_text = loc_el.text.strip()
-
-                    detail_page.close()
+                        if not location_text:
+                            loc_el = detail_soup.select_one("[class*='ocation']")
+                            if loc_el:
+                                location_text = loc_el.text.strip()
                 except Exception as e:
                     log.debug("[Glints] Gagal ambil detail %s: %s", job_url, e)
 
@@ -161,12 +142,6 @@ def scrape_glints(keyword="software engineer", max_jobs=25):
             except Exception as e:
                 log.debug("[Glints] Gagal proses kartu: %s", e)
                 continue
-    finally:
-        try:
-            browser.close()
-        except Exception:
-            pass
-        p.stop()
 
     log.info("[Glints] Keyword '%s' menghasilkan %d lowongan", keyword, len(jobs))
     return jobs

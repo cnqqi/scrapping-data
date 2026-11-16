@@ -1,12 +1,11 @@
 import logging
 
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, quote_plus, parse_qs, urlparse
+from urllib.parse import parse_qs, quote_plus, urlparse
 
-from base import goto_with_retry, human_delay, jitter_scroll
-from browser import get_browser
-from extract import extract_job_type
-from skills_keyword import extract_skills
+from core.base import listing_page, resolve_url
+from core.extract import extract_job_type
+from core.skills_keyword import extract_skills
 
 log = logging.getLogger(__name__)
 
@@ -21,29 +20,16 @@ def _canonical_url(href):
 
 
 def scrape_indeed(keyword="software engineer", max_jobs=25):
-    p, browser, context = get_browser()
-    jobs = []
+    base_url = "https://id.indeed.com"
+    url = f"{base_url}/jobs?q={quote_plus(keyword)}&l=Indonesia"
 
-    try:
-        page = context.new_page()
+    with listing_page(url, "div.job_seen_beacon", "Indeed") as loaded:
+        if loaded is None:
+            return []
 
-        base_url = "https://id.indeed.com"
-        url = f"{base_url}/jobs?q={quote_plus(keyword)}&l=Indonesia"
-
-        if not goto_with_retry(page, url):
-            log.warning("[Indeed] Gagal memuat halaman pencarian: %s", url)
-            return jobs
-
-        human_delay()
-        jitter_scroll(page)
-        human_delay()
-
-        try:
-            page.wait_for_selector("div.job_seen_beacon", timeout=30000)
-        except Exception:
-            log.warning("[Indeed] Kartu lowongan tidak muncul untuk keyword: %s", keyword)
-
+        page, _context = loaded
         soup = BeautifulSoup(page.content(), "html.parser")
+        jobs = []
 
         for card in soup.select("div.job_seen_beacon"):
             if len(jobs) >= max_jobs:
@@ -62,12 +48,7 @@ def scrape_indeed(keyword="software engineer", max_jobs=25):
                 if not title_el:
                     continue
 
-                href = title_el.get("href", "")
-                if href.startswith("http"):
-                    raw = href.split("?")[0]
-                else:
-                    raw = urljoin(base_url, href)
-
+                raw = resolve_url(title_el.get("href", ""), base_url)
                 job_url = _canonical_url(raw) or raw
                 if not job_url.startswith("http"):
                     continue
@@ -95,12 +76,6 @@ def scrape_indeed(keyword="software engineer", max_jobs=25):
             except Exception as e:
                 log.debug("[Indeed] Gagal proses kartu: %s", e)
                 continue
-    finally:
-        try:
-            browser.close()
-        except Exception:
-            pass
-        p.stop()
 
     log.info("[Indeed] Keyword '%s' menghasilkan %d lowongan", keyword, len(jobs))
     return jobs

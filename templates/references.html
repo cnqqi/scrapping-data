@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+{% block title %}Atur Pencarian - Job Scraper{% endblock %}
+
+{% macro source_form(v, action_url, submit_label, hidden_action, builtin_scrapers, show_notes) %}
+<form method="post" action="{{ action_url }}" class="ref-form src-edit-grid">
+  {% if hidden_action %}<input type="hidden" name="action" value="{{ hidden_action }}">{% endif %}
+
+  <input type="hidden" name="scraper_key" value="custom">
+  <input type="hidden" name="url_template" id="autoUrl_{{ v.get('id', 'new') }}"
+         value="{{ v['url_template'] or '' }}">
+
+  <label class="field">
+    <span class="field-label">Nama Situs <span class="req">*</span></span>
+    <input class="input" type="text" name="name"
+           value="{{ v['name'] or '' }}"
+           placeholder="Contoh: Tokopedia Careers, Gojek Jobs…"
+           required maxlength="80" autocomplete="off"
+           data-auto-url-target="autoUrl_{{ v.get('id', 'new') }}"
+           data-auto-url-preview="autoUrlPreview_{{ v.get('id', 'new') }}">
+    <span class="field-hint" id="autoUrlPreview_{{ v.get('id', 'new') }}" style="word-break:break-all">
+      {%- if v['url_template'] -%}
+        URL: <code>{{ v['url_template'] }}</code>
+      {%- else -%}
+        Ketik nama situs — URL pencarian terbuat otomatis.
+      {%- endif -%}
+    </span>
+  </label>
+
+
+
+  <div class="row">
+    <button type="submit" class="btn btn-primary">{{ submit_label }}</button>
+    {% if hidden_action %}
+    <button type="button" class="btn btn-ghost ref-cancel">Batal</button>
+    <span class="badge badge-warn ref-dirty hidden">Ada perubahan belum disimpan</span>
+    {% else %}
+    <span class="spacer"></span>
+    {% endif %}
+  </div>
+</form>
+{% endmacro %}
+
+{% set EMPTY_SOURCE = {
+  'scraper_key': 'custom', 'name': '', 'url_template': '',
+  'item_selector': '', 'title_selector': '', 'url_selector': '',
+  'company_selector': '', 'location_selector': '', 'desc_selector': '',
+  'next_page_selector': '', 'notes': '',
+  'max_jobs': 25, 'max_pages': 1, 'enabled': True, 'fetch_detail': True
+} %}
+
+{% set enabled_sources = sources|selectattr('enabled')|list|length %}
+{% set enabled_keywords = keywords|selectattr('enabled')|list|length %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Atur Pencarian</h1>
+    <p class="page-sub">
+      Tentukan <strong>situs mana</strong> yang dibaca dan <strong>kata kunci apa</strong> yang dicari.
+      Semua bisa diatur dari halaman ini, tanpa menyentuh kode.
+    </p>
+  </div>
+
+</div>
+
+<ol class="steps">
+  <li>Pilih situs yang dipakai, matikan yang tidak diperlukan</li>
+  <li>Tulis kata kunci yang dicari, lalu tekan <strong>Tambah</strong></li>
+  <li>Buka <a href="{{ url_for('pipeline') }}">Jalankan</a> dan tekan <strong>Mulai</strong></li>
+</ol>
+
+{% if not ready %}
+<div class="alert alert-warn">
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M12 9v4.5M12 17h.01M10.3 3.9 2.6 17.1A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.9L13.7 3.9a2 2 0 0 0-3.4 0Z"/>
+  </svg>
+  <div>
+    <div class="alert-title">Tabel penyimpanan belum ada di database</div>
+    <p>Supabase belum punya tabel referensi, jadi pengaturan di bawah belum bisa disimpan. Cara memperbaikinya:</p>
+    <ol>
+      <li>Buka Supabase &rarr; <b>SQL Editor</b> &rarr; <b>New query</b>.</li>
+      <li>Salin seluruh isi file <code>schema_referensi.sql</code>.</li>
+      <li>Paste, pilih <b>No RLS</b>, lalu klik <b>Run</b>.</li>
+      <li>Restart server, lalu muat ulang halaman ini.</li>
+    </ol>
+    {% if error %}<p class="mute-sm" style="margin-top:0.5rem"><code>{{ error }}</code></p>{% endif %}
+    <p class="mute-sm" style="margin-top: 0.5rem">Sementara itu, scraping tetap berjalan memakai daftar bawaan di <code>run.py</code>.</p>
+  </div>
+</div>
+{% endif %}
+
+{# ── Ringkasan ─────────────────────────────────────────────────────────── #}
+<div class="grid grid-3 grid-keep-2">
+  <div class="stat">
+    <div class="stat-label">Situs Dipakai</div>
+    <div class="stat-value tabular">{{ enabled_sources }}<span class="stat-denom">/ {{ sources|length }}</span></div>
+    <div class="stat-note">{{ sources|length - enabled_sources }} dilewati</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Kata Kunci Dipakai</div>
+    <div class="stat-value tabular">{{ enabled_keywords }}<span class="stat-denom">/ {{ keywords|length }}</span></div>
+    <div class="stat-note">{{ keywords|length - enabled_keywords }} dilewati</div>
+  </div>
+
+</div>
+
+{% if ready %}
+{# ── Situs ────────────────────────────────────────────────────────────── #}
+<section>
+  <div class="section-head">
+    <div>
+      <h2>Situs Sumber</h2>
+    </div>
+  </div>
+
+
+  <details class="disclose" style="margin-bottom: 0.75rem">
+    <summary>
+      Cara menambahkan situs baru
+      <span class="badge badge-mute">panduan</span>
+    </summary>
+    <div class="disclose-body">
+      <p style="margin-bottom: 0.75rem">Hanya butuh <strong>2 langkah</strong> — tidak perlu kode atau CSS apapun.</p>
+
+      <div style="display: grid; gap: 0.6rem; margin-bottom: 0.85rem">
+        <div style="display: flex; gap: 0.75rem; align-items: flex-start">
+          <span style="background: var(--brand); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; margin-top: 1px">1</span>
+          <div>
+            <strong>Isi nama dan alamat pencarian situs.</strong> Misalnya mau ambil lowongan dari
+            <em>Tokopedia Careers</em> — cukup isi nama <code>Tokopedia Careers</code> dan alamat
+            <code>https://www.tokopedia.com/careers/jobs?search={keyword}</code>.
+            Ganti bagian kata kunci di URL dengan <code>{keyword}</code>, sistem akan otomatis
+            mengisinya dengan setiap kata kunci yang ada di daftar bawah.
+          </div>
+        </div>
+        <div style="display: flex; gap: 0.75rem; align-items: flex-start">
+          <span style="background: var(--brand); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; margin-top: 1px">2</span>
+          <div>
+            <strong>Tekan Simpan — selesai.</strong> Semua kata kunci yang sudah ada otomatis
+            dipakai untuk mencari di situs ini pada run berikutnya.
+          </div>
+        </div>
+      </div>
+
+      <div style="background: var(--surface-raised, var(--surface)); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 0.6rem">
+        <p style="font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; opacity: 0.7">Cara menemukan alamat pencarian:</p>
+        <ol style="padding-left: 1.1rem; line-height: 1.9; font-size: 0.875rem; margin: 0">
+          <li>Buka halaman karier/lowongan situs tersebut di browser</li>
+          <li>Ketik kata kunci apa saja di kolom pencarian, lalu tekan Enter</li>
+          <li>Salin URL dari address bar — itulah alamat pencariannya</li>
+          <li>Ganti kata kunci yang baru kamu ketik di URL dengan <code>{keyword}</code></li>
+        </ol>
+      </div>
+
+      <p class="mute-sm" style="margin-top: 0">
+        <strong>Syarat:</strong> situs bisa dibuka tanpa login dan daftar lowongan langsung muncul di halaman
+        (bukan dimuat belakangan). Kalau tidak yakin, coba buka URL-nya — kalau lowongan sudah tampil, berarti bisa dipakai.
+      </p>
+    </div>
+  </details>
+
+  <div style="margin-bottom: 0.75rem">
+    <button type="button" class="btn btn-primary" id="addSourceToggle" aria-expanded="false" aria-controls="addSourcePanel">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span id="addSourceLabel">Tambah Situs Baru</span>
+    </button>
+  </div>
+
+  <div class="card hidden" id="addSourcePanel" style="margin-bottom: 0.9rem">
+    <div class="card-head">
+      <div>
+        <h2>Situs Baru</h2>
+        <p>Setelah disimpan, situs ini langsung ikut dipakai pada run berikutnya.</p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="addSourceClose" aria-label="Tutup formulir">&times; Tutup</button>
+    </div>
+    <div class="card-body">
+      {{ source_form(EMPTY_SOURCE, url_for('sources_create'), 'Simpan Situs', None, builtin_scrapers, True) }}
+    </div>
+  </div>
+
+  <div class="src-list" id="sourceBody">
+    {% for s in sources %}
+    <article class="src {% if not s['enabled'] %}is-off{% endif %}"
+             id="src-{{ s['id'] }}"
+             data-search="{{ s['name']|lower }} {{ s['url_template']|lower }} {{ s['scraper_key']|lower }}">
+      <div class="src-main">
+        <div class="src-head">
+          <span class="src-name">{{ s['name'] }}</span>
+          {% if s['scraper_key'] in builtin_scrapers %}
+          <span class="badge badge-brand">bawaan</span>
+          {% else %}
+          <span class="badge badge-mute">custom</span>
+          {% endif %}
+          {% if s['enabled'] %}
+          <span class="badge badge-ok badge-dot">dipakai</span>
+          {% else %}
+          <span class="badge badge-mute">dilewati</span>
+          {% endif %}
+          {% if s['fetch_detail'] %}<span class="badge badge-info">buka detail</span>{% endif %}
+        </div>
+
+        <div class="src-url"><a href="{{ s['url_template'] }}" target="_blank" rel="noopener">{{ s['url_template'] }}</a></div>
+
+        <div class="src-facts">
+          <span>maks <b>{{ s['max_jobs'] }}</b> lowongan</span>
+          <span>maks <b>{{ s['max_pages'] }}</b> halaman</span>
+          <span>{% if s['item_selector'] %}{{ s['item_selector'] }}{% else %}selector dari program bawaan{% endif %}</span>
+        </div>
+
+        {% if s['notes'] %}<div class="src-notes">Catatan: {{ s['notes'] }}</div>{% endif %}
+      </div>
+
+      <div class="src-tools">
+
+
+        <div class="src-actions">
+          <button type="button" class="btn btn-sm ref-toggle" data-target="edit-{{ s['id'] }}" aria-expanded="false"
+                  aria-controls="edit-{{ s['id'] }}">Ubah</button>
+          <form method="post" action="{{ url_for('sources_update', source_id=s['id']) }}">
+            <input type="hidden" name="action" value="toggle">
+            <button type="submit" class="btn btn-sm">
+              {% if s['enabled'] %}Berhenti dipakai{% else %}Pakai lagi{% endif %}
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('sources_update', source_id=s['id']) }}"
+                data-confirm="Hapus situs &quot;{{ s['name'] }}&quot;?">
+            <input type="hidden" name="action" value="delete">
+            <button type="submit" class="btn btn-sm btn-danger">Hapus</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="src-edit hidden" id="edit-{{ s['id'] }}">
+        {{ source_form(s, url_for('sources_update', source_id=s['id']), 'Simpan Perubahan', 'update', builtin_scrapers, True) }}
+      </div>
+    </article>
+    {% else %}
+    <div class="empty">
+      <span class="empty-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 21V6a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M13 10h5a1 1 0 0 1 1 1v10M3 21h18M7 8h3M7 12h3M7 16h3"/>
+        </svg>
+      </span>
+      <h3>Belum ada situs</h3>
+      <p>Tekan <strong>Tambah Situs Baru</strong> di atas untuk menambahkan situs pertama, atau jalankan
+         scraping sekali agar daftar bawaan terisi otomatis.</p>
+    </div>
+    {% endfor %}
+  </div>
+
+</section>
+
+{# ── Kata kunci ────────────────────────────────────────────────────────── #}
+<section>
+  <div class="section-head">
+    <div>
+      <h2>Kata Kunci</h2>
+      <p>Setiap kata kunci dicari di <strong>semua</strong> situs yang berstatus “dipakai”.</p>
+    </div>
+  </div>
+
+  <form class="card card-pad kw-add" method="post" action="{{ url_for('keywords_create') }}">
+    <label class="field kw-add-main">
+      <span class="field-label">Kata Kunci Baru</span>
+      <input class="input" type="text" name="keyword" placeholder="Contoh: admin kantor" autocomplete="off" required>
+    </label>
+
+    <button type="submit" class="btn btn-primary">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Tambah
+    </button>
+  </form>
+
+  <label class="search" style="margin-bottom: 0.7rem">
+    <span class="sr-only">Cari kata kunci</span>
+    <span class="search-icon">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+    </span>
+    <input class="input" type="search" id="keywordSearch" placeholder="Cari kata kunci…" autocomplete="off">
+  </label>
+
+  <div class="kw-list" id="keywordList">
+    {% for k in keywords %}
+    <form class="kw {% if not k['enabled'] %}is-off{% endif %}" method="post"
+          action="{{ url_for('keywords_update', keyword_id=k['id']) }}"
+          data-search="{{ k['keyword']|lower }}">
+      <button type="submit" name="action" value="toggle" class="switch-pill"
+              title="Klik untuk {% if k['enabled'] %}berhenti dipakai{% else %}dipakai lagi{% endif %}">
+        {% if k['enabled'] %}Dipakai{% else %}Dilewati{% endif %}
+      </button>
+
+      <label class="sr-only" for="kwn-{{ k['id'] }}">Kata kunci {{ k['keyword'] }}</label>
+      <input class="input input-sm kw-name" type="text" id="kwn-{{ k['id'] }}" name="keyword"
+             value="{{ k['keyword'] }}" autocomplete="off" required>
+
+      <div class="row-tight">
+        <button type="submit" name="action" value="update" class="btn btn-sm">Simpan</button>
+        <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger"
+                data-confirm="Hapus kata kunci &quot;{{ k['keyword'] }}&quot;?">Hapus</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="empty">
+      <h3>Belum ada kata kunci</h3>
+      <p>Tambahkan minimal satu kata kunci di atas supaya scraping punya sesuatu untuk dicari.</p>
+    </div>
+    {% endfor %}
+  </div>
+  <div id="keywordEmpty" class="empty hidden">
+    <h3>Tidak ada kata kunci yang cocok</h3>
+    <p>Coba kata kunci lain, atau kosongkan kotak pencarian.</p>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='references.js') }}"></script>
+<script>
+(function () {
+  var KNOWN = {
+    'linkedin':  'https://www.linkedin.com/jobs/search/?keywords={keyword}',
+    'jobstreet': 'https://www.jobstreet.co.id/jobs?q={keyword}',
+    'glints':    'https://glints.com/id/opportunities/jobs/explore?keyword={keyword}',
+    'kalibrr':   'https://www.kalibrr.com/job-board/te/all?q={keyword}',
+    'indeed':    'https://id.indeed.com/jobs?q={keyword}',
+    'karir':     'https://www.karir.com/search?q={keyword}',
+    'urbanhire': 'https://www.urbanhire.com/jobs?keyword={keyword}',
+    'loker':     'https://www.loker.id/cari-lowongan?q={keyword}',
+    'jobplanet': 'https://www.jobplanet.co.id/jobs?q={keyword}',
+    'techinasia':'https://www.techinasia.com/jobs/search?term={keyword}',
+    'kitalulus': 'https://www.kitalulus.com/lowongan?keyword={keyword}',
+    'cake':      'https://www.cakeresume.com/jobs?q={keyword}',
+  };
+
+  function buildUrl(name) {
+    if (!name) return '';
+    var lower = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    for (var key in KNOWN) {
+      if (lower.indexOf(key) !== -1) return KNOWN[key];
+    }
+    return 'https://www.google.com/search?q={keyword}+lowongan+' + encodeURIComponent(name);
+  }
+
+  function initAutoUrl(nameInput) {
+    var previewId = nameInput.getAttribute('data-auto-url-preview');
+    var targetId  = nameInput.getAttribute('data-auto-url-target');
+    var previewEl = document.getElementById(previewId);
+    var targetEl  = document.getElementById(targetId);
+    if (!targetEl) return;
+
+    /* Jika sudah ada URL (mode edit), tampilkan tapi biarkan */
+    if (targetEl.value) {
+      if (previewEl) previewEl.innerHTML = 'URL: <code>' + targetEl.value + '</code>';
+    }
+
+    nameInput.addEventListener('input', function () {
+      var url = buildUrl(this.value.trim());
+      targetEl.value = url;
+      if (previewEl) {
+        previewEl.innerHTML = url
+          ? 'URL otomatis: <code style="word-break:break-all">' + url + '</code>'
+          : 'Ketik nama situs \u2014 URL pencarian terbuat otomatis.';
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-auto-url-target]').forEach(initAutoUrl);
+})();
+</script>
+
+{% endblock %}

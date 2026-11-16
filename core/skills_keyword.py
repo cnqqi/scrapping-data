@@ -71,13 +71,19 @@ AMBIGUOUS = {
 
 
 def _match_ambiguous(text):
-    found = []
-    for skill, patterns in AMBIGUOUS.items():
-        for pattern in patterns:
-            if re.search(pattern, text, re.IGNORECASE):
-                found.append(skill)
-                break
-    return found
+    return [skill for skill, pattern in _AMBIGUOUS_PATTERNS if pattern.search(text)]
+
+
+# Precompile semua pola sekali saat import supaya pencocokan lebih cepat.
+_SKILL_PATTERNS = [
+    (skill, re.compile(r"\b" + re.escape(skill.lower()) + r"\b"))
+    for skill in SKILLS_DB
+]
+_AMBIGUOUS_PATTERNS = [
+    (skill, re.compile(pattern, re.IGNORECASE))
+    for skill, patterns in AMBIGUOUS.items()
+    for pattern in patterns
+]
 
 
 def extract_skills(text):
@@ -86,13 +92,7 @@ def extract_skills(text):
         return []
 
     text_lower = text.lower()
-    found = []
-
-    for skill in SKILLS_DB:
-        pattern = r'\b' + re.escape(skill.lower()) + r'\b'
-        if re.search(pattern, text_lower):
-            found.append(skill)
-
-    found += _match_ambiguous(text_lower)
+    found = [skill for skill, pattern in _SKILL_PATTERNS if pattern.search(text_lower)]
+    found += _match_ambiguous(text)
 
     return list(set(found))
